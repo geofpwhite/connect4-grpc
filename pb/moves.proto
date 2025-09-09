@@ -1,0 +1,37 @@
+service connect4 {
+  rpc CommunicateState(stream Input) returns (stream State) {}
+  rpc NewGame(Empty) returns (GameIDAndTeam) {}
+  rpc JoinGame(GameID) returns (GameIDAndTeam) {}
+  rpc LeaveGame(GameIDAndTeam) returns (Empty) {}
+}
+
+enum team {
+  empty = 0;
+  blue = 2;
+  red = 1;
+}
+
+message Input {
+  required int32 game_id = 1;
+  required int32 column = 2;
+  required team input_team = 3;
+}
+
+message State {
+  required Field field = 1;
+  required team turn = 2;
+}
+
+option go_package = "connect4-grpc/pb";
+
+message Field { repeated Row rows = 1; }
+
+message Row { repeated team values = 1; }
+
+message Empty {};
+
+message GameIDAndTeam {
+  required int32 id = 1;
+  required team team = 2;
+}
+message GameID { required int32 id = 1; }
