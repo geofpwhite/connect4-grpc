@@ -294,7 +294,7 @@ func scan(state field, team pb.Team) bool {
 
 func Serve() {
 
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 4040))
+	lis, err := net.Listen("tcp", "0.0.0.0:50051")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
