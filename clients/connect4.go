@@ -3,12 +3,10 @@ package clients
 import (
 	"context"
 	"flag"
-	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"io"
-	"os"
 	"strconv"
 
 	"fortio.org/terminal/ansipixels"
@@ -63,7 +61,10 @@ func Main() {
 	}
 	stateChan := make(chan ([8][8]pb.Team))
 	inputChan := make(chan int)
-	inputObj := &pb.Input{GameId: &g.id, InputTeam: &g.team}
+	startColumn := int32(-1)
+	inputObj := &pb.Input{GameId: &g.id, InputTeam: &g.team, Column: &startColumn}
+	//
+	stream.Send(inputObj)
 	defer client.LeaveGame(context.Background(), &pb.GameIDAndTeam{Id: &g.id, Team: &g.team})
 
 	go func() {
@@ -75,14 +76,20 @@ func Main() {
 				return
 			}
 			if err != nil {
+
 				continue
 			}
 			for i, row := range in.Field.Rows {
-				for j, value := range row.Values {
-					stateReceived[i][j] = value
+				copy(stateReceived[i][:], row.Values)
+				for _, value := range row.Values {
+					if value == pb.Team_blue {
+
+					}
 				}
+
 			}
 			stateChan <- stateReceived
+
 		}
 	}()
 	go func() {
@@ -92,7 +99,7 @@ func Main() {
 			err := stream.Send(inputObj)
 			if err != nil {
 				// panic(err)
-				fmt.Fprintln(os.Stderr, err)
+				//
 				continue
 			}
 		}
@@ -108,48 +115,51 @@ func Main() {
 	ap.MouseClickOn()
 	ap.ClearScreen()
 	ap.HideCursor()
-	img := image.NewRGBA(image.Rect(0, 0, ap.W, ap.H))
+	img := image.NewRGBA(image.Rect(0, 0, ap.W, ap.H*2))
 	draw.Draw(img, img.Rect, image.NewUniform(color.Black), image.Point{}, draw.Over)
 	frame := 0
 	ap.FPSTicks(context.Background(), func(ctx context.Context) bool {
-		ap.ClearScreen()
 		frame = (frame + 1) % 60
 		select {
 		case state := <-stateChan:
-			fmt.Fprintln(os.Stderr, state)
+			//
+			ap.ClearScreen()
+			img := image.NewRGBA(image.Rect(0, 0, ap.W, ap.H*2))
+			draw.Draw(img, img.Rect, image.NewUniform(color.Black), image.Point{}, draw.Over)
+
 			g.state = state
 			for i, row := range g.state {
-				clr := color.RGBA{}
 				for j, value := range row {
-
+					clr := color.RGBA{}
 					switch value {
 					case 1:
-						clr = color.RGBA{255, 0, 0, 150}
+						clr = color.RGBA{255, 0, 0, 255}
 					case 2:
-						clr = color.RGBA{0, 0, 255, 150}
+						clr = color.RGBA{0, 0, 255, 255}
 					}
-					x := (ap.H / 10) * (1 + i)
-					y := (ap.H / 10) * (1 + j)
-					xBound := x + (ap.H / 10)
-					yBound := y + (ap.H / 10)
+					x := (ap.W / 10) * (1 + j)
+					y := ((ap.H * 2) - ((ap.H / 5) * (1 + i)))
+					xBound := x + (ap.W / 10)
+					yBound := ((ap.H * 2) - ((ap.H / 5) * (2 + i)))
+					//
 					draw.Draw(img, image.Rect(x, y, xBound, yBound), &image.Uniform{clr}, image.Point{}, draw.Over)
 				}
 			}
+			ap.Draw216ColorImage(0, 0, img)
 		default:
 		}
 		if len(ap.Data) > 0 && ap.Data[0] == 'q' {
 			return false
 		}
 
-		if ap.LeftClick() {
+		if ap.LeftClick() || ap.LeftDrag() {
 			column := ap.Mx / (ap.W / 10)
 			ap.WriteAtStr(1, ap.H-1, strconv.Itoa(column))
 			if column > 0 && column < 9 {
 				inputChan <- column
 			}
 		}
-		ap.Draw216ColorImage(0, 0, img)
-		ap.WriteAtStr(1, 1, fmt.Sprintf("%d", frame))
+		// ap.WriteAtStr(1, 1, fmt.Sprintf("%d", frame))
 
 		return true
 	})
