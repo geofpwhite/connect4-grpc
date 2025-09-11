@@ -34,8 +34,8 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 	joinID := flag.Int("join-id", -1, "id of game to join")
 	flag.Parse()
 
-	// conn, err := grpc.NewClient("64.227.12.170:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient("64.227.12.170:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	// connected := false
 	if err != nil {
 		panic(err)
