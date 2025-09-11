@@ -167,6 +167,7 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 
 		return true
 	})
+
 	if err != nil {
 		log.FErrf("%e", err)
 	}
