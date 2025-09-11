@@ -43,8 +43,6 @@ func (cs *connect4Server) update(id int32, s *pb.State) error {
 	if !exists {
 		return errors.New("game does not exist")
 	}
-	g.mut.Lock()
-	defer g.mut.Unlock()
 	wg := &sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
