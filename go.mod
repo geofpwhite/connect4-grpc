@@ -3,12 +3,12 @@ module github.com/geofpwhite/connect4-grpc
 go 1.25.0
 
 require (
+	fortio.org/log v1.17.2
 	google.golang.org/grpc v1.75.0
 	google.golang.org/protobuf v1.36.9
 )
 
 require (
-	fortio.org/log v1.17.2 // indirect
 	fortio.org/safecast v1.2.0 // indirect
 	fortio.org/struct2env v0.4.2 // indirect
 	github.com/kortschak/goroutine v1.1.2 // indirect

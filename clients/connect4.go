@@ -9,6 +9,7 @@ import (
 	"image/color"
 	"image/draw"
 	"io"
+	"math"
 	"strconv"
 
 	"fortio.org/log"
@@ -144,7 +145,10 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 					y := ((ap.H * 2) - ((ap.H / 5) * (1 + i)))
 					xBound := x + (ap.W / 10)
 					yBound := ((ap.H * 2) - ((ap.H / 5) * (2 + i)))
-					draw.Draw(img, image.Rect(x, y, xBound, yBound), &image.Uniform{clr}, image.Point{}, draw.Over)
+
+					// draw.Draw(img, image.Rect(x, y, xBound, yBound), &image.Uniform{clr}, image.Point{}, draw.Over)
+					radius := ap.W / 14
+					DrawDisc((x+xBound)/2, (y+yBound)/2, clr, img, ap, radius)
 				}
 			}
 			if drawErr := ap.Draw216ColorImage(0, 0, img); drawErr != nil {
@@ -164,11 +168,53 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 			}
 		}
 		// ap.WriteAtStr(1, 1, fmt.Sprintf("%d", frame))
+		for i := range 8 {
+			ap.DrawRoundBox(ap.W*(1+i)/10, ap.H/10, ap.W/10, ap.H*8/10)
+			// for j := range 8 {
+			// 	x := (ap.W / 10) * (1 + j)
+			// 	y := ((ap.H / 10) * (1 + i))
+			// 	xBound := x + (ap.W / 10)
+			// 	yBound := y + (ap.H / 10)
 
+			// 	// draw.Draw(img, image.Rect(x, y, xBound, yBound), &image.Uniform{clr}, image.Point{}, draw.Over)
+			// 	// ap.DrawSquareBox(x+1, y+1, xBound-x-1, yBound-y-1)
+			// }
+		}
+		ap.WriteAtStr(1, 1, fmt.Sprintf("%d", g.id))
 		return true
 	})
 
 	if err != nil {
 		log.FErrf("%e", err)
 	}
+}
+
+type coords struct{ x, y int }
+
+func DrawDisc(x, y int, clr color.RGBA, img *image.RGBA, ap *ansipixels.AnsiPixels, radius int) {
+	bounds := circleBounds(x, y, img, ap, radius)
+	for x, yBounds := range bounds {
+		for yValue := yBounds.x; yValue < yBounds.y; yValue++ {
+
+			ansipixels.AddPixel(img, x, yValue, clr)
+		}
+	}
+}
+func circleBounds(x, y int, img *image.RGBA, ap *ansipixels.AnsiPixels, radius int) map[int]*coords {
+	bounds := make(map[int]*coords)
+	for i := 0.; i < math.Pi; i += math.Pi / (float64(radius)) { // tbd
+		ex := .25 * float64(radius) * (math.Cos(i))
+		ey := .25 * float64(radius) * (math.Sin(2*math.Pi - i))
+		eyUpper := .25 * float64(radius) * (math.Sin(i))
+		rx, ry := int(ex)+x, int(ey)+y
+		ryUpper := int(eyUpper) + y
+		if rx > img.Bounds().Dx() {
+			rx = img.Bounds().Dx()
+		}
+		if ryUpper > img.Bounds().Dy() {
+			ryUpper = img.Bounds().Dy()
+		}
+		bounds[rx] = &coords{ry, ryUpper}
+	}
+	return bounds
 }

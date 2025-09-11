@@ -243,7 +243,7 @@ type (
 )
 
 func scan(state field, team pb.Team) bool {
-	visited := make(map[coords]bool)
+	visited := make(map[coords]map[int]int)
 	queue := make([]qNode, 0)
 	for i := range state {
 		if state[0][i] == team {
@@ -252,7 +252,12 @@ func scan(state field, team pb.Team) bool {
 	}
 	for len(queue) > 0 {
 		cur := queue[0]
-		visited[cur.coords] = true
+		m, ok := visited[cur.coords]
+		if !ok {
+			visited[cur.coords] = make(map[int]int)
+			m = visited[cur.coords]
+		}
+		m[cur.directionStreak] = cur.streak
 		queue = queue[1:]
 		fmt.Println(cur)
 		if cur.streak >= 4 {
@@ -265,7 +270,8 @@ func scan(state field, team pb.Team) bool {
 			{cur.coords.x + 1, cur.coords.y - 1},
 		}
 		for i, coords := range toCheck {
-			if coords.x >= 0 && coords.x < 8 && coords.y >= 0 && coords.y < 8 && state[coords.x][coords.y] == team && !visited[coords] {
+			if coords.x >= 0 && coords.x < 8 && coords.y >= 0 &&
+				coords.y < 8 && state[coords.x][coords.y] == team && visited[coords][i] < cur.streak+1 {
 				if cur.directionStreak == i {
 					queue = append(queue, qNode{cur.directionStreak, cur.streak + 1, coords})
 				} else {
