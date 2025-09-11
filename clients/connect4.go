@@ -2,13 +2,16 @@ package clients
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"io"
 	"strconv"
 
+	"fortio.org/log"
 	"fortio.org/terminal/ansipixels"
 	"github.com/geofpwhite/connect4-grpc/pb"
 	"google.golang.org/grpc"
@@ -21,7 +24,7 @@ type game struct {
 	state [8][8]pb.Team
 }
 
-func Main() {
+func Main() { //nolint: funlen,gocognit //this is the main function it's gonna get a bit big
 	ap := ansipixels.NewAnsiPixels(60)
 	err := ap.Open()
 	if err != nil {
@@ -31,7 +34,8 @@ func Main() {
 	joinID := flag.Int("join-id", -1, "id of game to join")
 	flag.Parse()
 
-	conn, err := grpc.NewClient("localhost:4040", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// conn, err := grpc.NewClient("64.227.12.170:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	// connected := false
 	if err != nil {
 		panic(err)
@@ -40,20 +44,20 @@ func Main() {
 	client := pb.NewConnect4Client(conn)
 	g := &game{}
 	if *newGame {
-		id, err := client.NewGame(context.Background(), &pb.Empty{}, grpc.EmptyCallOption{})
-		g.id = *id.Id
-		g.team = *id.Team
-		if err != nil {
-			panic("issue starting game")
+		id, initErr := client.NewGame(context.Background(), &pb.Empty{}, grpc.EmptyCallOption{})
+		g.id = id.GetId()
+		g.team = id.GetTeam()
+		if initErr != nil {
+			panic(fmt.Sprintf("issue starting game: %s", initErr))
 		}
 	} else {
-		id := int32(*joinID)
-		idAndTeam, err := client.JoinGame(context.Background(), &pb.GameID{Id: &id})
-		if err != nil {
+		id := int32(*joinID) //nolint:gosec //panic is fine if they give number that overflows
+		idAndTeam, joinErr := client.JoinGame(context.Background(), &pb.GameID{Id: &id})
+		if joinErr != nil {
 			panic("no game with that id")
 		}
 		g.id = id
-		g.team = *idAndTeam.Team
+		g.team = idAndTeam.GetTeam()
 	}
 	stream, err := client.CommunicateState(context.Background())
 	if err != nil {
@@ -64,40 +68,39 @@ func Main() {
 	startColumn := int32(-1)
 	inputObj := &pb.Input{GameId: &g.id, InputTeam: &g.team, Column: &startColumn}
 	//
-	stream.Send(inputObj)
-	defer client.LeaveGame(context.Background(), &pb.GameIDAndTeam{Id: &g.id, Team: &g.team})
+	err = stream.Send(inputObj)
+	if err != nil {
+		log.Infof("error sending initial connection message")
+	}
+	defer func() {
+		if _, leaveErr := client.LeaveGame(context.Background(), &pb.GameIDAndTeam{Id: &g.id, Team: &g.team}); leaveErr != nil {
+			log.FErrf("error leaving")
+		}
+	}()
 
 	go func() {
 		stateReceived := [8][8]pb.Team{}
 		for {
-			in, err := stream.Recv()
-			if err == io.EOF {
+			in, streamErr := stream.Recv()
+			if errors.Is(streamErr, io.EOF) {
 				close(stateChan)
 				return
 			}
-			if err != nil {
-
+			if streamErr != nil {
 				continue
 			}
-			for i, row := range in.Field.Rows {
-				copy(stateReceived[i][:], row.Values)
-				for _, value := range row.Values {
-					if value == pb.Team_blue {
-
-					}
-				}
-
+			for i, row := range in.GetField().GetRows() {
+				copy(stateReceived[i][:], row.GetValues())
 			}
 			stateChan <- stateReceived
-
 		}
 	}()
 	go func() {
 		for input := range inputChan {
-			i32 := int32(input)
+			i32 := int32(input) //nolint:gosec //input will never be greater than 8
 			inputObj.Column = &i32
-			err := stream.Send(inputObj)
-			if err != nil {
+			sendErr := stream.Send(inputObj)
+			if sendErr != nil {
 				// panic(err)
 				//
 				continue
@@ -118,7 +121,7 @@ func Main() {
 	img := image.NewRGBA(image.Rect(0, 0, ap.W, ap.H*2))
 	draw.Draw(img, img.Rect, image.NewUniform(color.Black), image.Point{}, draw.Over)
 	frame := 0
-	ap.FPSTicks(context.Background(), func(ctx context.Context) bool {
+	err = ap.FPSTicks(context.Background(), func(context.Context) bool {
 		frame = (frame + 1) % 60
 		select {
 		case state := <-stateChan:
@@ -131,7 +134,7 @@ func Main() {
 			for i, row := range g.state {
 				for j, value := range row {
 					clr := color.RGBA{}
-					switch value {
+					switch value { //nolint: exhaustive // keep it black if empty
 					case 1:
 						clr = color.RGBA{255, 0, 0, 255}
 					case 2:
@@ -141,11 +144,12 @@ func Main() {
 					y := ((ap.H * 2) - ((ap.H / 5) * (1 + i)))
 					xBound := x + (ap.W / 10)
 					yBound := ((ap.H * 2) - ((ap.H / 5) * (2 + i)))
-					//
 					draw.Draw(img, image.Rect(x, y, xBound, yBound), &image.Uniform{clr}, image.Point{}, draw.Over)
 				}
 			}
-			ap.Draw216ColorImage(0, 0, img)
+			if drawErr := ap.Draw216ColorImage(0, 0, img); drawErr != nil {
+				log.FErrf("%e", drawErr)
+			}
 		default:
 		}
 		if len(ap.Data) > 0 && ap.Data[0] == 'q' {
@@ -163,4 +167,7 @@ func Main() {
 
 		return true
 	})
+	if err != nil {
+		log.FErrf("%e", err)
+	}
 }

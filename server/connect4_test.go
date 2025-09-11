@@ -1,4 +1,4 @@
-package clients
+package server
 
 import (
 	"context"
@@ -13,7 +13,6 @@ import (
 func TestConnect4GameFlow(t *testing.T) {
 	// Connect to the gRPC server
 	conn, err := grpc.Dial("localhost:4040", grpc.WithInsecure())
-
 	if err != nil {
 		t.Fatalf("Failed to connect to server: %v", err)
 	}

@@ -22,7 +22,7 @@ type game struct {
 	state                 field
 	mut                   *sync.RWMutex
 	red                   bool // true if player1 is connect
-	blue                  bool //true if player2 is connected
+	blue                  bool // true if player2 is connected
 	redWins, blueWins     int
 	redStream, blueStream grpc.BidiStreamingServer[pb.Input, pb.State]
 }
@@ -39,101 +39,87 @@ func newServer() *connect4Server {
 }
 
 func (cs *connect4Server) update(id int32, s *pb.State) error {
-	if g, exists := cs.games[id]; exists {
-		g.mut.Lock()
-		defer g.mut.Unlock()
-		// go func() {
+	g, exists := cs.games[id]
+	if !exists {
+		return errors.New("game does not exist")
+	}
+	g.mut.Lock()
+	defer g.mut.Unlock()
+	wg := &sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
 		if g.blueStream != nil {
-
 			if err := g.blueStream.Send(s); err != nil {
 				fmt.Fprintln(os.Stderr, "blue stream can't send")
 			}
-
 		}
-		// }()
-		// go func() {
+		wg.Done()
+	}()
+	go func() {
 		if g.redStream != nil {
-
 			if err := g.redStream.Send(s); err != nil {
 				fmt.Fprintln(os.Stderr, "red stream can't send")
 			}
-
 		}
-		// }()
-	}
+		wg.Done()
+	}()
+	wg.Wait()
 	return nil
 }
 
-// CommunicateState(grpc.BidiStreamingServer[Input, State]) error
-// NewGame(context.Context, *Empty) (*GameIDAndTeam, error)
-// JoinGame(context.Context, *GameID) (*GameIDAndTeam, error)
-// LeaveGame(context.Context, *GameIDAndTeam) (*Empty, error)
-func (cs *connect4Server) JoinGame(ctx context.Context, id *pb.GameID) (*pb.GameIDAndTeam, error) {
-
-	if game, exists := cs.games[*id.Id]; exists {
-
+func (cs *connect4Server) JoinGame(_ context.Context, id *pb.GameID) (*pb.GameIDAndTeam, error) {
+	if game, exists := cs.games[id.GetId()]; exists {
 		game.mut.RLock()
-
 		if game.red && game.blue {
-
 			game.mut.RUnlock()
-
-			return nil, errors.New("Game is full")
+			return nil, errors.New("game is full")
 		}
 		red, blue := game.red, game.blue
 		game.mut.RUnlock()
 		if !red {
-
 			game.mut.Lock()
 			game.red = true
 			game.mut.Unlock()
-
 			return &pb.GameIDAndTeam{Id: id.Id, Team: pb.Team_red.Enum()}, nil
 		} else if !blue {
-
 			game.mut.Lock()
-
 			game.blue = true
 			game.mut.Unlock()
-
 			return &pb.GameIDAndTeam{Id: id.Id, Team: pb.Team_blue.Enum()}, nil
 		}
 	}
-	return nil, errors.New("Game does not exist")
+	return nil, errors.New("game does not exist")
 }
-func (cs *connect4Server) LeaveGame(ctx context.Context, idAndTeam *pb.GameIDAndTeam) (*pb.Empty, error) {
-	if game, exists := cs.games[*idAndTeam.Id]; exists {
+
+func (cs *connect4Server) LeaveGame(_ context.Context, idAndTeam *pb.GameIDAndTeam) (*pb.Empty, error) {
+	if game, exists := cs.games[idAndTeam.GetId()]; exists {
 		game.mut.Lock()
-		if idAndTeam.Team == pb.Team_blue.Enum() {
+		if idAndTeam.GetTeam().Enum() == pb.Team_blue.Enum() {
 			game.blue = false
 		} else {
 			game.red = false
 		}
 		game.mut.Unlock()
-
 		if !game.blue && !game.red {
-			delete(cs.games, *idAndTeam.Id)
+			delete(cs.games, idAndTeam.GetId())
 		}
 	}
-
 	return &pb.Empty{}, nil
 }
 
 func (cs *connect4Server) CommunicateState(stream grpc.BidiStreamingServer[pb.Input, pb.State]) error {
-
 	input, err := stream.Recv() // client should send first message with column = -1 in order to place stream in game struct field
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return nil
 	}
 	if err != nil {
-
 		return err
 	}
-	game, exists := cs.games[*input.GameId]
+	game, exists := cs.games[input.GetGameId()]
 	if !exists {
 		return nil
 	}
-	if *input.InputTeam == *pb.Team_blue.Enum() {
+	if *input.GetInputTeam().Enum() == *pb.Team_blue.Enum() {
 		game.mut.Lock()
 		game.blueStream = stream
 
@@ -158,22 +144,21 @@ func (cs *connect4Server) CommunicateState(stream grpc.BidiStreamingServer[pb.In
 
 	for {
 		input, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		fmt.Println(input)
 		if err != nil {
 			return err
 		}
-		game, exists := cs.games[*input.GameId]
+		game, exists := cs.games[input.GetGameId()]
 		if !exists {
 			return nil
 		}
 
-		game.modifyState(*input.Column, *input.InputTeam)
+		game.modifyState(input.GetColumn(), input.GetInputTeam())
 		s := &pb.State{}
-		turn := pb.Team(game.turn)
-		s.Turn = &turn
+		s.Turn = &game.turn
 		field := pb.Field{Rows: []*pb.Row{}}
 
 		for i := range game.state {
@@ -183,17 +168,18 @@ func (cs *connect4Server) CommunicateState(stream grpc.BidiStreamingServer[pb.In
 			}
 		}
 		s.Field = &field
-		err = cs.update(*input.GameId, s)
+		err = cs.update(input.GetGameId(), s)
 		if err != nil {
 			return err
 		}
 	}
 }
-func (cs *connect4Server) NewGame(ctx context.Context, empty *pb.Empty) (*pb.GameIDAndTeam, error) {
-	id := rand.Int32()
+
+func (cs *connect4Server) NewGame(_ context.Context, _ *pb.Empty) (*pb.GameIDAndTeam, error) {
+	id := rand.Int32() //nolint: gosec // it's just the game id
 	_, exists := cs.games[id]
 	for exists {
-		id = rand.Int32()
+		id = rand.Int32() //nolint: gosec // it's just the game id
 		_, exists = cs.games[id]
 	}
 	cs.games[id] = &game{
@@ -205,12 +191,9 @@ func (cs *connect4Server) NewGame(ctx context.Context, empty *pb.Empty) (*pb.Gam
 	return &pb.GameIDAndTeam{Id: &id, Team: pb.Team_red.Enum()}, nil
 }
 
-// CommunicateState(grpc.BidiStreamingServer[Input, State]) error
-// NewGame(context.Context, *Empty) (*GameID, error)
 func (g *game) modifyState(column int32, inputTeam pb.Team) {
 	g.mut.RLock()
 	if g.state[7][int(column-1)] != 0 || inputTeam != g.turn {
-
 		g.mut.RUnlock()
 		return
 	}
@@ -236,16 +219,13 @@ func (g *game) modifyState(column int32, inputTeam pb.Team) {
 		g.turn = pb.Team_red
 		g.mut.Unlock()
 	}
-
 }
 
 func fall(state field, column int32) field {
 	for i := range 8 {
 		if state[i][column] != 0 {
-
 			for j := i; j > 0 && state[j-1][column] == 0; j-- {
 				state[j-1][column], state[j][column] = state[j][column], 0
-
 			}
 		}
 	}
@@ -253,31 +233,37 @@ func fall(state field, column int32) field {
 	return state
 }
 
-type coords struct{ x, y int }
-type qNode struct {
-	directionStreak int
-	streak          int
-	coords          coords
-}
+type (
+	coords struct{ x, y int }
+	qNode  struct {
+		directionStreak int
+		streak          int
+		coords          coords
+	}
+)
 
 func scan(state field, team pb.Team) bool {
 	visited := make(map[coords]bool)
-	queue := make([]qNode, 8)
+	queue := make([]qNode, 0)
 	for i := range state {
 		if state[0][i] == team {
-			queue[i] = qNode{-1, 1, coords{0, i}}
+			queue = append(queue, qNode{-1, 1, coords{0, i}})
 		}
 	}
 	for len(queue) > 0 {
 		cur := queue[0]
-
 		visited[cur.coords] = true
 		queue = queue[1:]
 		fmt.Println(cur)
 		if cur.streak >= 4 {
 			return true
 		}
-		toCheck := []coords{coords{cur.coords.x, cur.coords.y + 1}, coords{cur.coords.x + 1, cur.coords.y + 1}, coords{cur.coords.x + 1, cur.coords.y}, coords{cur.coords.x + 1, cur.coords.y - 1}}
+		toCheck := []coords{
+			{cur.coords.x, cur.coords.y + 1},
+			{cur.coords.x + 1, cur.coords.y + 1},
+			{cur.coords.x + 1, cur.coords.y},
+			{cur.coords.x + 1, cur.coords.y - 1},
+		}
 		for i, coords := range toCheck {
 			if coords.x >= 0 && coords.x < 8 && coords.y >= 0 && coords.y < 8 && state[coords.x][coords.y] == team && !visited[coords] {
 				if cur.directionStreak == i {
@@ -287,13 +273,11 @@ func scan(state field, team pb.Team) bool {
 				}
 			}
 		}
-
 	}
 	return false
 }
 
 func Serve() {
-
 	lis, err := net.Listen("tcp", "0.0.0.0:50051")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -301,5 +285,7 @@ func Serve() {
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
 	pb.RegisterConnect4Server(grpcServer, newServer())
-	grpcServer.Serve(lis)
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatal("server failed")
+	}
 }
