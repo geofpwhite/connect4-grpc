@@ -14,6 +14,7 @@ import (
 
 	"fortio.org/log"
 	"fortio.org/terminal/ansipixels"
+	"fortio.org/terminal/ansipixels/tcolor"
 	"github.com/geofpwhite/connect4-grpc/pb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -111,55 +112,100 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 
 	defer func() {
 		ap.MouseClickOff()
+		ap.MouseTrackingOff()
 		ap.ShowCursor()
 		ap.Restore()
 	}()
 
 	ap.TrueColor = true
 	ap.MouseClickOn()
+	ap.MouseTrackingOn()
 	ap.ClearScreen()
 	ap.HideCursor()
 	img := image.NewRGBA(image.Rect(0, 0, ap.W, ap.H*2))
 	draw.Draw(img, img.Rect, image.NewUniform(color.Black), image.Point{}, draw.Over)
 	frame := 0
+	highlightedColumn := -1
+	ap.OnResize = func() error {
+		img = image.NewRGBA(image.Rect(0, 0, ap.W, ap.H*2))
+		return nil
+	}
 	err = ap.FPSTicks(context.Background(), func(context.Context) bool {
 		frame = (frame + 1) % 60
 		select {
 		case state := <-stateChan:
 			//
 			ap.ClearScreen()
-			img := image.NewRGBA(image.Rect(0, 0, ap.W, ap.H*2))
+			img = image.NewRGBA(image.Rect(0, 0, ap.W, ap.H*2))
 			draw.Draw(img, img.Rect, image.NewUniform(color.Black), image.Point{}, draw.Over)
 
 			g.state = state
-			for i, row := range g.state {
-				for j, value := range row {
-					clr := color.RGBA{}
-					switch value { //nolint: exhaustive // keep it black if empty
-					case 1:
-						clr = color.RGBA{255, 0, 0, 255}
-					case 2:
-						clr = color.RGBA{0, 0, 255, 255}
-					}
-					x := (ap.W / 10) * (1 + j)
-					y := ((ap.H * 2) - ((ap.H / 5) * (1 + i)))
-					xBound := x + (ap.W / 10)
-					yBound := ((ap.H * 2) - ((ap.H / 5) * (2 + i)))
+			// for i, row := range g.state {
+			// 	for j, value := range row {
+			// 		clr := color.RGBA{}
+			// 		switch value { //nolint: exhaustive // keep it black if empty
+			// 		case 1:
+			// 			clr = color.RGBA{255, 0, 0, 255}
+			// 		case 2:
+			// 			clr = color.RGBA{0, 0, 255, 255}
+			// 		}
+			// 		x := (ap.W / 10) * (1 + j)
+			// 		y := ((ap.H * 2) - ((ap.H / 5) * (1 + i)))
+			// 		xBound := x + (ap.W / 10)
+			// 		yBound := ((ap.H * 2) - ((ap.H / 5) * (2 + i)))
 
-					// draw.Draw(img, image.Rect(x, y, xBound, yBound), &image.Uniform{clr}, image.Point{}, draw.Over)
-					radius := ap.W / 14
-					DrawDisc((x+xBound)/2, (y+yBound)/2, clr, img, ap, radius)
-				}
-			}
-			if drawErr := ap.Draw216ColorImage(0, 0, img); drawErr != nil {
-				log.FErrf("%e", drawErr)
-			}
+			// 		radius := ap.W / 14
+			// 		DrawDisc((x+xBound)/2, (y+yBound)/2, clr, img, radius)
+			// 	}
+			// }
 		default:
 		}
+		for i, row := range g.state {
+			x := (ap.W / 10) * (1 + i)
+			// y := ((ap.H * 2) - ((ap.H / 5) * (1 + i)))
+			xBound := x + (ap.W / 10)
+			// yBound := ((ap.H * 2) - ((ap.H / 5) * (2 + i)))
+			clr := color.RGBA{0, 0, 0, 50}
+			if ap.Mx >= x && ap.Mx < xBound && highlightedColumn != i {
+				clr = color.RGBA{255, 255, 255, 50}
+				highlightedColumn = i
+			}
+			draw.Draw(img, image.Rect(x, ap.H/5, xBound, ap.H*9/5), &image.Uniform{clr}, image.Point{}, draw.Over)
+			for j, value := range row {
+				clr := tcolor.RGBColor{}
+				x := (ap.W / 10) * (1 + j)
+				y := ((ap.H) - ((ap.H / 10) * (1 + i)))
+				xBound := x + (ap.W / 10)
+				// yBound := ((ap.H) - ((ap.H / 10) * (2 + i)))
+				yBound := y - ap.H/10
+				switch value { //nolint: exhaustive // keep it black if empty
+				case 1:
+					// _, color := tcolor.Red.Color().Decode()
+					// clr = tcolor.ToRGB(tcolor.ColorTypeRGB, color)
+					clr = tcolor.RGBColor{255, 0, 0}
+				case 2:
+					// _, color := tcolor.Yellow.Color().Decode()
+					// clr = tcolor.ToRGB(tcolor.ColorTypeRGB, color)
+					clr = tcolor.RGBColor{255, 255, 0}
+				case 0:
+					// ap.WriteAtStr((x+xBound)/2, (y+yBound)/2, clr.String())
+					continue
+
+				}
+
+				// ap.WriteAtStr((x+xBound)/2, (y+yBound)/2, clr.String())
+				radius := min((xBound-x)/2, (y - yBound))
+				ap.DiscSRGB((x+xBound)/2, yBound, radius, clr, clr, .1)
+				// DrawDisc((x+xBound)/2, (y+yBound)/2, clr, img, radius)
+				// ap.Disc()
+			}
+		}
+		// if drawErr := ap.Draw216ColorImage(0, 0, img); drawErr != nil {
+		// 	log.FErrf("%e", drawErr)
+		// }
 		if len(ap.Data) > 0 && ap.Data[0] == 'q' {
 			return false
 		}
-
 		if ap.LeftClick() || ap.LeftDrag() {
 			column := ap.Mx / (ap.W / 10)
 			ap.WriteAtStr(1, ap.H-1, strconv.Itoa(column))
@@ -183,7 +229,6 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 		ap.WriteAtStr(1, 1, fmt.Sprintf("%d", g.id))
 		return true
 	})
-
 	if err != nil {
 		log.FErrf("%e", err)
 	}
@@ -191,16 +236,16 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 
 type coords struct{ x, y int }
 
-func DrawDisc(x, y int, clr color.RGBA, img *image.RGBA, ap *ansipixels.AnsiPixels, radius int) {
-	bounds := circleBounds(x, y, img, ap, radius)
+func DrawDisc(x, y int, clr color.RGBA, img *image.RGBA, radius int) {
+	bounds := circleBounds(x, y, img, radius)
 	for x, yBounds := range bounds {
 		for yValue := yBounds.x; yValue < yBounds.y; yValue++ {
-
 			ansipixels.AddPixel(img, x, yValue, clr)
 		}
 	}
 }
-func circleBounds(x, y int, img *image.RGBA, ap *ansipixels.AnsiPixels, radius int) map[int]*coords {
+
+func circleBounds(x, y int, img *image.RGBA, radius int) map[int]*coords {
 	bounds := make(map[int]*coords)
 	for i := 0.; i < math.Pi; i += math.Pi / (float64(radius)) { // tbd
 		ex := .25 * float64(radius) * (math.Cos(i))

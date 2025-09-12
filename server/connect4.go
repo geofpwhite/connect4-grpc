@@ -18,13 +18,13 @@ import (
 type field [8][8]pb.Team
 
 type game struct {
-	turn                  pb.Team
-	state                 field
-	mut                   *sync.RWMutex
-	red                   bool // true if player1 is connect
-	blue                  bool // true if player2 is connected
-	redWins, blueWins     int
-	redStream, blueStream grpc.BidiStreamingServer[pb.Input, pb.State]
+	turn                    pb.Team
+	state                   field
+	mut                     *sync.RWMutex
+	red                     bool // true if player1 is connect
+	yellow                  bool // true if player2 is connected
+	redWins, yellowWins     int
+	redStream, yellowStream grpc.BidiStreamingServer[pb.Input, pb.State]
 }
 
 type connect4Server struct {
@@ -46,9 +46,9 @@ func (cs *connect4Server) update(id int32, s *pb.State) error {
 	wg := &sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		if g.blueStream != nil {
-			if err := g.blueStream.Send(s); err != nil {
-				fmt.Fprintln(os.Stderr, "blue stream can't send")
+		if g.yellowStream != nil {
+			if err := g.yellowStream.Send(s); err != nil {
+				fmt.Fprintln(os.Stderr, "yellow stream can't send")
 			}
 		}
 		wg.Done()
@@ -68,22 +68,22 @@ func (cs *connect4Server) update(id int32, s *pb.State) error {
 func (cs *connect4Server) JoinGame(_ context.Context, id *pb.GameID) (*pb.GameIDAndTeam, error) {
 	if game, exists := cs.games[id.GetId()]; exists {
 		game.mut.RLock()
-		if game.red && game.blue {
+		if game.red && game.yellow {
 			game.mut.RUnlock()
 			return nil, errors.New("game is full")
 		}
-		red, blue := game.red, game.blue
+		red, yellow := game.red, game.yellow
 		game.mut.RUnlock()
 		if !red {
 			game.mut.Lock()
 			game.red = true
 			game.mut.Unlock()
 			return &pb.GameIDAndTeam{Id: id.Id, Team: pb.Team_red.Enum()}, nil
-		} else if !blue {
+		} else if !yellow {
 			game.mut.Lock()
-			game.blue = true
+			game.yellow = true
 			game.mut.Unlock()
-			return &pb.GameIDAndTeam{Id: id.Id, Team: pb.Team_blue.Enum()}, nil
+			return &pb.GameIDAndTeam{Id: id.Id, Team: pb.Team_yellow.Enum()}, nil
 		}
 	}
 	return nil, errors.New("game does not exist")
@@ -92,13 +92,15 @@ func (cs *connect4Server) JoinGame(_ context.Context, id *pb.GameID) (*pb.GameID
 func (cs *connect4Server) LeaveGame(_ context.Context, idAndTeam *pb.GameIDAndTeam) (*pb.Empty, error) {
 	if game, exists := cs.games[idAndTeam.GetId()]; exists {
 		game.mut.Lock()
-		if idAndTeam.GetTeam().Enum() == pb.Team_blue.Enum() {
-			game.blue = false
+		if idAndTeam.GetTeam().Enum() == pb.Team_yellow.Enum() {
+			game.yellowStream = nil
+			game.yellow = false
 		} else {
+			game.redStream = nil
 			game.red = false
 		}
 		game.mut.Unlock()
-		if !game.blue && !game.red {
+		if !game.yellow && !game.red {
 			delete(cs.games, idAndTeam.GetId())
 		}
 	}
@@ -117,15 +119,15 @@ func (cs *connect4Server) CommunicateState(stream grpc.BidiStreamingServer[pb.In
 	if !exists {
 		return nil
 	}
-	if *input.GetInputTeam().Enum() == *pb.Team_blue.Enum() {
+	if *input.GetInputTeam().Enum() == *pb.Team_yellow.Enum() {
 		game.mut.Lock()
-		game.blueStream = stream
+		game.yellowStream = stream
 
 		game.mut.Unlock()
 		defer func() {
 			game.mut.Lock()
-			game.blueStream = nil
-			game.blue = false
+			game.yellowStream = nil
+			game.yellow = false
 			game.mut.Unlock()
 		}()
 	} else {
@@ -153,7 +155,6 @@ func (cs *connect4Server) CommunicateState(stream grpc.BidiStreamingServer[pb.In
 		if !exists {
 			return nil
 		}
-
 		game.modifyState(input.GetColumn(), input.GetInputTeam())
 		s := &pb.State{}
 		s.Turn = &game.turn
@@ -209,8 +210,8 @@ func (g *game) modifyState(column int32, inputTeam pb.Team) {
 	if ended {
 		g.mut.Lock()
 		g.state = field{}
-		if inputTeam == *pb.Team_blue.Enum() {
-			g.blueWins++
+		if inputTeam == *pb.Team_yellow.Enum() {
+			g.yellowWins++
 		} else {
 			g.redWins++
 		}

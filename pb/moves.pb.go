@@ -24,22 +24,22 @@ const (
 type Team int32
 
 const (
-	Team_empty Team = 0
-	Team_blue  Team = 2
-	Team_red   Team = 1
+	Team_empty  Team = 0
+	Team_yellow Team = 2
+	Team_red    Team = 1
 )
 
 // Enum value maps for Team.
 var (
 	Team_name = map[int32]string{
 		0: "empty",
-		2: "blue",
+		2: "yellow",
 		1: "red",
 	}
 	Team_value = map[string]int32{
-		"empty": 0,
-		"blue":  2,
-		"red":   1,
+		"empty":  0,
+		"yellow": 2,
+		"red":    1,
 	}
 )
 
@@ -434,10 +434,11 @@ const file_pb_moves_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x02(\x05R\x02id\x12\x19\n" +
 	"\x04team\x18\x02 \x02(\x0e2\x05.teamR\x04team\"\x18\n" +
 	"\x06GameID\x12\x0e\n" +
-	"\x02id\x18\x01 \x02(\x05R\x02id*$\n" +
+	"\x02id\x18\x01 \x02(\x05R\x02id*&\n" +
 	"\x04team\x12\t\n" +
-	"\x05empty\x10\x00\x12\b\n" +
-	"\x04blue\x10\x02\x12\a\n" +
+	"\x05empty\x10\x00\x12\n" +
+	"\n" +
+	"\x06yellow\x10\x02\x12\a\n" +
 	"\x03red\x10\x012\xa7\x01\n" +
 	"\bconnect4\x12(\n" +
 	"\x10CommunicateState\x12\x06.Input\x1a\x06.State\"\x00(\x010\x01\x12#\n" +
