@@ -26,7 +26,7 @@ type game struct {
 	state [8][8]pb.Team
 }
 
-func Main() { //nolint: funlen,gocognit //this is the main function it's gonna get a bit big
+func Main() { //nolint: funlen,gocognit,gocyclo,maintidx //this is the main function it's gonna get a bit big
 	ap := ansipixels.NewAnsiPixels(60)
 	err := ap.Open()
 	if err != nil {
@@ -69,7 +69,6 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 	inputChan := make(chan int)
 	startColumn := int32(-1)
 	inputObj := &pb.Input{GameId: &g.id, InputTeam: &g.team, Column: &startColumn}
-	//
 	err = stream.Send(inputObj)
 	if err != nil {
 		log.Infof("error sending initial connection message")
@@ -160,49 +159,37 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 			// }
 		default:
 		}
-		for i, row := range g.state {
+		for i := range g.state {
 			x := (ap.W / 10) * (1 + i)
-			// y := ((ap.H * 2) - ((ap.H / 5) * (1 + i)))
 			xBound := x + (ap.W / 10)
-			// yBound := ((ap.H * 2) - ((ap.H / 5) * (2 + i)))
 			clr := color.RGBA{0, 0, 0, 50}
 			if ap.Mx >= x && ap.Mx < xBound && highlightedColumn != i {
 				clr = color.RGBA{255, 255, 255, 50}
 				highlightedColumn = i
 			}
 			draw.Draw(img, image.Rect(x, ap.H/5, xBound, ap.H*9/5), &image.Uniform{clr}, image.Point{}, draw.Over)
+		}
+		ap.Draw216ColorImage(0, 0, img)
+		for i, row := range g.state {
 			for j, value := range row {
-				clr := tcolor.RGBColor{}
 				x := (ap.W / 10) * (1 + j)
+				clr := tcolor.RGBColor{}
 				y := ((ap.H) - ((ap.H / 10) * (1 + i)))
 				xBound := x + (ap.W / 10)
-				// yBound := ((ap.H) - ((ap.H / 10) * (2 + i)))
 				yBound := y - ap.H/10
-				switch value { //nolint: exhaustive // keep it black if empty
+				switch value {
 				case 1:
-					// _, color := tcolor.Red.Color().Decode()
-					// clr = tcolor.ToRGB(tcolor.ColorTypeRGB, color)
 					clr = tcolor.RGBColor{255, 0, 0}
 				case 2:
-					// _, color := tcolor.Yellow.Color().Decode()
-					// clr = tcolor.ToRGB(tcolor.ColorTypeRGB, color)
 					clr = tcolor.RGBColor{255, 255, 0}
 				case 0:
-					// ap.WriteAtStr((x+xBound)/2, (y+yBound)/2, clr.String())
 					continue
-
 				}
 
-				// ap.WriteAtStr((x+xBound)/2, (y+yBound)/2, clr.String())
 				radius := min((xBound-x)/2, (y - yBound))
 				ap.DiscSRGB((x+xBound)/2, yBound, radius, clr, clr, .1)
-				// DrawDisc((x+xBound)/2, (y+yBound)/2, clr, img, radius)
-				// ap.Disc()
 			}
 		}
-		// if drawErr := ap.Draw216ColorImage(0, 0, img); drawErr != nil {
-		// 	log.FErrf("%e", drawErr)
-		// }
 		if len(ap.Data) > 0 && ap.Data[0] == 'q' {
 			return false
 		}
@@ -227,6 +214,7 @@ func Main() { //nolint: funlen,gocognit //this is the main function it's gonna g
 			// }
 		}
 		ap.WriteAtStr(1, 1, fmt.Sprintf("%d", g.id))
+		ap.WriteAtStr(1, 1, fmt.Sprintf("%d%d", tcolor.Black))
 		return true
 	})
 	if err != nil {
