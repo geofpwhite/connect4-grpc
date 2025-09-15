@@ -213,7 +213,7 @@ func Main() { //nolint: funlen,gocognit,gocyclo,maintidx //this is the main func
 			// 	// ap.DrawSquareBox(x+1, y+1, xBound-x-1, yBound-y-1)
 			// }
 		}
-		ap.WriteAtStr(1, 1, fmt.Sprintf("%d", g.id))
+		ap.WriteAtStr(1, 1, strconv.Itoa(int(g.id)))
 		return true
 	})
 	if err != nil {
