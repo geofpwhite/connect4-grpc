@@ -214,7 +214,6 @@ func Main() { //nolint: funlen,gocognit,gocyclo,maintidx //this is the main func
 			// }
 		}
 		ap.WriteAtStr(1, 1, fmt.Sprintf("%d", g.id))
-		ap.WriteAtStr(1, 1, fmt.Sprintf("%d%d", tcolor.Black))
 		return true
 	})
 	if err != nil {
