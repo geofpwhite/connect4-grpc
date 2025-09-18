@@ -74,15 +74,13 @@ func (cs *connect4Server) JoinGame(_ context.Context, id *pb.GameID) (*pb.GameID
 		}
 		red, yellow := game.red, game.yellow
 		game.mut.RUnlock()
+		game.mut.Lock()
+		defer game.mut.Unlock()
 		if !red {
-			game.mut.Lock()
 			game.red = true
-			game.mut.Unlock()
 			return &pb.GameIDAndTeam{Id: id.Id, Team: pb.Team_red.Enum()}, nil
 		} else if !yellow {
-			game.mut.Lock()
 			game.yellow = true
-			game.mut.Unlock()
 			return &pb.GameIDAndTeam{Id: id.Id, Team: pb.Team_yellow.Enum()}, nil
 		}
 	}
@@ -207,17 +205,19 @@ func (g *game) modifyState(column int32, inputTeam pb.Team) {
 
 	g.mut.RUnlock()
 
-	if ended {
-		g.mut.Lock()
-		g.state = field{}
-		if inputTeam == *pb.Team_yellow.Enum() {
-			g.yellowWins++
-		} else {
-			g.redWins++
-		}
-		g.turn = pb.Team_red
-		g.mut.Unlock()
+	if !ended {
+		return
 	}
+	g.mut.Lock()
+	g.state = field{}
+	if inputTeam == *pb.Team_yellow.Enum() {
+		g.yellowWins++
+	} else {
+		g.redWins++
+	}
+	g.turn = pb.Team_red
+	g.mut.Unlock()
+
 }
 
 func fall(state field, column int32) field {
@@ -271,11 +271,11 @@ func scan(state field, team pb.Team) bool {
 		for i, coords := range toCheck {
 			if coords.x >= 0 && coords.x < 8 && coords.y >= 0 &&
 				coords.y < 8 && state[coords.x][coords.y] == team && visited[coords][i] < cur.streak+1 {
+				qn := qNode{i, 2, coords}
 				if cur.directionStreak == i {
-					queue = append(queue, qNode{cur.directionStreak, cur.streak + 1, coords})
-				} else {
-					queue = append(queue, qNode{i, 2, coords})
+					qn = qNode{cur.directionStreak, cur.streak + 1, coords}
 				}
+				queue = append(queue, qn)
 			}
 		}
 	}
